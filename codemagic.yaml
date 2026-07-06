@@ -11,7 +11,7 @@ workflows:
         XCODE_PROJECT: "ReminderSchedulerApp.xcodeproj"
         XCODE_SCHEME: "ReminderSchedulerApp"
         BUNDLE_ID: "com.pguuu.futurecall"
-        APP_STORE_APP_ID: "" # Fill in after the App Store Connect app record exists.
+        APP_STORE_APP_ID: "6788156334"
     scripts:
       - name: Show build context
         script: |
