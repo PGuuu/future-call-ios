@@ -20,6 +20,12 @@ workflows:
         script: |
           xcodebuild -version
           xcodebuild -list -project "$XCODE_PROJECT"
+      - name: Fetch signing files
+        script: |
+          app-store-connect fetch-signing-files "$BUNDLE_ID" \
+            --type IOS_APP_STORE \
+            --create
+          keychain add-certificates
       - name: Apply Codemagic signing profiles
         script: |
           xcode-project use-profiles
