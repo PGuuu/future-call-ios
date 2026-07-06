@@ -7,6 +7,9 @@ workflows:
       app_store_connect: codemagic
     environment:
       xcode: latest
+      ios_signing:
+        distribution_type: app_store
+        bundle_identifier: "com.pguuu.futurecall"
       vars:
         XCODE_PROJECT: "ReminderSchedulerApp.xcodeproj"
         XCODE_SCHEME: "ReminderSchedulerApp"
