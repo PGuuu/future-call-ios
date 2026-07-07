@@ -125,11 +125,11 @@ struct ContentView: View {
                 }
             }
 
-            if let activeReminder {
+            if let presentedReminder = activeReminder {
                 IncomingCallView(
-                    reminder: activeReminder,
+                    reminder: presentedReminder,
                     onComplete: {
-                        store.complete(activeReminder)
+                        store.complete(presentedReminder)
                         activeReminder = nil
                     },
                     onDismiss: {
