@@ -41,6 +41,28 @@ workflows:
           xcode-project build-ipa \
             --project "$XCODE_PROJECT" \
             --scheme "$XCODE_SCHEME"
+      - name: Ensure IPA artifact exists
+        script: |
+          if [ -d build/ios/ipa ] && find build/ios/ipa -name "*.ipa" -print -quit | grep -q .; then
+            find build/ios/ipa -name "*.ipa" -print
+            exit 0
+          fi
+
+          ARCHIVE_PATH="$(find build/ios/xcarchive -name "*.xcarchive" -print -quit)"
+          APP_PATH="$(find "$ARCHIVE_PATH/Products/Applications" -name "*.app" -print -quit)"
+
+          if [ -z "$ARCHIVE_PATH" ] || [ -z "$APP_PATH" ]; then
+            echo "Unable to find exported IPA or archived app."
+            exit 1
+          fi
+
+          IPA_NAME="${XCODE_SCHEME}.ipa"
+          PACKAGE_ROOT="$(mktemp -d)"
+          mkdir -p "$PACKAGE_ROOT/Payload"
+          cp -R "$APP_PATH" "$PACKAGE_ROOT/Payload/"
+          mkdir -p build/ios/ipa
+          ditto -c -k --norsrc "$PACKAGE_ROOT" "build/ios/ipa/$IPA_NAME"
+          ls -lh "build/ios/ipa/$IPA_NAME"
     artifacts:
       - build/ios/ipa/**/*.ipa
       - build/ios/ipa/**/*
