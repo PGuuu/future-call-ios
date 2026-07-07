@@ -1,15 +1,25 @@
 import Foundation
 import UserNotifications
 
-final class NotificationRouter: NSObject, ObservableObject, UNUserNotificationCenterDelegate {
+extension Notification.Name {
+    static let futureCallNotificationOpened = Notification.Name("futureCallNotificationOpened")
+}
+
+final class NotificationRouter: NSObject, UNUserNotificationCenterDelegate {
     static let shared = NotificationRouter()
 
-    @Published var openedReminderID: UUID?
+    private var pendingReminderID: UUID?
 
     private override init() {}
 
     func configure() {
         UNUserNotificationCenter.current().delegate = self
+    }
+
+    func consumePendingReminderID() -> UUID? {
+        let id = pendingReminderID
+        pendingReminderID = nil
+        return id
     }
 
     func userNotificationCenter(
@@ -32,8 +42,9 @@ final class NotificationRouter: NSObject, ObservableObject, UNUserNotificationCe
             return
         }
 
-        Task { @MainActor in
-            openedReminderID = id
+        DispatchQueue.main.async {
+            self.pendingReminderID = id
+            NotificationCenter.default.post(name: .futureCallNotificationOpened, object: nil)
         }
     }
 }

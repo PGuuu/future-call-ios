@@ -8,29 +8,28 @@ enum ReminderListKind {
     var title: String {
         switch self {
         case .missed:
-            return "未接聽"
+            return "Missed"
         case .future:
-            return "未來通話"
+            return "Future"
         case .past:
-            return "過往通話"
+            return "Past"
         }
     }
 
     var emptyTitle: String {
         switch self {
         case .missed:
-            return "沒有未接聽"
+            return "No missed calls"
         case .future:
-            return "沒有未來通話"
+            return "No future calls"
         case .past:
-            return "沒有過往通話"
+            return "No past calls"
         }
     }
 }
 
 struct ContentView: View {
     @EnvironmentObject private var store: ReminderStore
-    @ObservedObject private var notificationRouter = NotificationRouter.shared
     @State private var isAddingReminder = false
     @State private var reminderToEdit: ReminderItem?
     @State private var activeReminder: ReminderItem?
@@ -43,8 +42,8 @@ struct ContentView: View {
                         isAddingReminder = true
                     } label: {
                         HomeActionRow(
-                            title: "打給未來",
-                            subtitle: "錄一段語音，或留一則簡訊給未來的自己",
+                            title: "Call the Future",
+                            subtitle: "Record a voice call or write a message to your future self",
                             icon: "plus.message.fill",
                             color: .blue,
                             count: nil
@@ -61,8 +60,8 @@ struct ContentView: View {
                         )
                     } label: {
                         HomeActionRow(
-                            title: "尚未接聽",
-                            subtitle: "已經到時間，但還沒有接聽或閱讀",
+                            title: "Not Answered",
+                            subtitle: "Calls and messages that are ready but unread",
                             icon: "phone.badge.waveform.fill",
                             color: .orange,
                             count: store.missedReminders.count
@@ -79,8 +78,8 @@ struct ContentView: View {
                         )
                     } label: {
                         HomeActionRow(
-                            title: "未來通話",
-                            subtitle: "預定時間與持續提醒",
+                            title: "Future Calls",
+                            subtitle: "Scheduled calls, messages, and keep-reminding alerts",
                             icon: "calendar.badge.clock",
                             color: .green,
                             count: store.futureReminders.count
@@ -97,8 +96,8 @@ struct ContentView: View {
                         )
                     } label: {
                         HomeActionRow(
-                            title: "過往通話",
-                            subtitle: "已接聽或已閱讀的紀錄",
+                            title: "Past Calls",
+                            subtitle: "Calls and messages already answered or read",
                             icon: "clock.arrow.circlepath",
                             color: .gray,
                             count: store.pastReminders.count
@@ -127,28 +126,25 @@ struct ContentView: View {
                     }
                 )
             }
-            .onChange(of: notificationRouter.openedReminderID) {
+            .onReceive(NotificationCenter.default.publisher(for: .futureCallNotificationOpened)) { _ in
                 openReminderFromNotification()
             }
             .onAppear {
-                openReminderFromNotification()
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                    openReminderFromNotification()
+                }
             }
         }
     }
 
     private func openReminderFromNotification() {
-        guard let id = notificationRouter.openedReminderID else { return }
-
-        guard let reminder = store.reminder(id: id),
+        guard let id = NotificationRouter.shared.consumePendingReminderID(),
+              let reminder = store.reminder(id: id),
               !reminder.isDone else {
-            DispatchQueue.main.async {
-                notificationRouter.openedReminderID = nil
-            }
             return
         }
 
-        DispatchQueue.main.async {
-            notificationRouter.openedReminderID = nil
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
             activeReminder = reminder
         }
     }
