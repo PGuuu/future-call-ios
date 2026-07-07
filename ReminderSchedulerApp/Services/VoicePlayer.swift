@@ -2,7 +2,7 @@ import AVFoundation
 import Foundation
 
 @MainActor
-final class VoicePlayer: NSObject, ObservableObject, AVAudioPlayerDelegate {
+final class VoicePlayer: ObservableObject {
     @Published private(set) var isPlaying = false
 
     private var player: AVAudioPlayer?
@@ -16,7 +16,6 @@ final class VoicePlayer: NSObject, ObservableObject, AVAudioPlayerDelegate {
 
             let url = AudioFileStore.url(for: fileName)
             player = try AVAudioPlayer(contentsOf: url)
-            player?.delegate = self
             player?.play()
             isPlaying = true
         } catch {
@@ -28,11 +27,5 @@ final class VoicePlayer: NSObject, ObservableObject, AVAudioPlayerDelegate {
         player?.stop()
         player = nil
         isPlaying = false
-    }
-
-    nonisolated func audioPlayerDidFinishPlaying(_ player: AVAudioPlayer, successfully flag: Bool) {
-        Task { @MainActor in
-            self.isPlaying = false
-        }
     }
 }

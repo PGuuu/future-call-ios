@@ -2,7 +2,7 @@ import AVFoundation
 import Foundation
 
 @MainActor
-final class VoiceRecorder: NSObject, ObservableObject, AVAudioRecorderDelegate {
+final class VoiceRecorder: ObservableObject {
     @Published private(set) var isRecording = false
     @Published private(set) var recordedFileName: String?
 
@@ -28,9 +28,9 @@ final class VoiceRecorder: NSObject, ObservableObject, AVAudioRecorderDelegate {
             AVEncoderAudioQualityKey: AVAudioQuality.high.rawValue
         ]
 
-        recorder = try AVAudioRecorder(url: url, settings: settings)
-        recorder?.delegate = self
-        recorder?.record()
+        let newRecorder = try AVAudioRecorder(url: url, settings: settings)
+        newRecorder.record()
+        recorder = newRecorder
         recordedFileName = fileName
         isRecording = true
     }
@@ -43,7 +43,7 @@ final class VoiceRecorder: NSObject, ObservableObject, AVAudioRecorderDelegate {
 
     private func requestPermission() async -> Bool {
         await withCheckedContinuation { continuation in
-            AVAudioSession.sharedInstance().requestRecordPermission { granted in
+            AVAudioApplication.requestRecordPermission { granted in
                 continuation.resume(returning: granted)
             }
         }
