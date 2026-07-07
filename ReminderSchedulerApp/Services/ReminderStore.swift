@@ -16,20 +16,16 @@ final class ReminderStore: ObservableObject {
         sortReminders()
     }
 
-    var nextIncomingCall: ReminderItem? {
-        reminders.first { $0.isReadyToCall }
+    var missedReminders: [ReminderItem] {
+        reminders.filter { !$0.isDone && $0.isReadyToCall }
     }
 
     var futureReminders: [ReminderItem] {
-        reminders.filter { !$0.isDone }
+        reminders.filter { !$0.isDone && !$0.isReadyToCall }
     }
 
     var pastReminders: [ReminderItem] {
         reminders.filter { $0.isDone }
-    }
-
-    func reminder(id: UUID) -> ReminderItem? {
-        reminders.first { $0.id == id }
     }
 
     func add(
@@ -52,6 +48,10 @@ final class ReminderStore: ObservableObject {
         try await scheduler.schedule(reminder)
         reminders.append(reminder)
         sortReminders()
+    }
+
+    func reminder(id: UUID) -> ReminderItem? {
+        reminders.first { $0.id == id }
     }
 
     func update(_ reminder: ReminderItem) async throws {

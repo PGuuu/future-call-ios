@@ -16,7 +16,6 @@ final class NotificationRouter: NSObject, ObservableObject, UNUserNotificationCe
         _ center: UNUserNotificationCenter,
         willPresent notification: UNNotification
     ) async -> UNNotificationPresentationOptions {
-        route(notification.request.content.userInfo)
         return [.banner, .sound, .badge]
     }
 

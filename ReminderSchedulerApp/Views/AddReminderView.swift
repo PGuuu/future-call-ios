@@ -1,10 +1,17 @@
 import SwiftUI
 
 struct AddReminderView: View {
-    enum Step {
+    private enum CreationKind {
         case voice
+        case message
+    }
+
+    private enum Step {
+        case chooseKind
+        case recordVoice
+        case messageDetails
         case schedule
-        case details
+        case finalDetails
     }
 
     @EnvironmentObject private var store: ReminderStore
@@ -16,6 +23,7 @@ struct AddReminderView: View {
     @StateObject private var recorder = VoiceRecorder()
 
     @State private var step: Step
+    @State private var creationKind: CreationKind
     @State private var title: String
     @State private var notes: String
     @State private var mode: ReminderMode
@@ -34,7 +42,9 @@ struct AddReminderView: View {
 
     init(reminderToEdit: ReminderItem? = nil) {
         self.reminderToEdit = reminderToEdit
-        _step = State(initialValue: reminderToEdit == nil ? .voice : .details)
+        let isEditing = reminderToEdit != nil
+        _step = State(initialValue: isEditing ? .messageDetails : .chooseKind)
+        _creationKind = State(initialValue: reminderToEdit?.hasVoiceMessage == true ? .voice : .message)
         _title = State(initialValue: reminderToEdit?.title ?? "")
         _notes = State(initialValue: reminderToEdit?.notes ?? "")
         _mode = State(initialValue: reminderToEdit?.mode ?? .dateTime)
@@ -46,13 +56,13 @@ struct AddReminderView: View {
     }
 
     private var repeatIntervalMinutes: Int {
-        max((hours * 60) + minutes, 1)
+        (hours * 60) + minutes
     }
 
     private var triggerDate: Date {
         switch mode {
         case .repeating:
-            return Date().addingTimeInterval(TimeInterval(repeatIntervalMinutes * 60))
+            return Date().addingTimeInterval(TimeInterval(max(repeatIntervalMinutes, 1) * 60))
         case .dateTime:
             return selectedDate
         }
@@ -62,14 +72,20 @@ struct AddReminderView: View {
         recorder.recordedFileName ?? existingAudioFileName
     }
 
-    private var canSaveDetails: Bool {
-        let hasText = !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-        let hasVoice = audioFileName != nil
-        guard (hasText || hasVoice), !isSaving else { return false }
+    private var canSave: Bool {
+        guard !isSaving else { return false }
+
+        if creationKind == .voice && audioFileName == nil {
+            return false
+        }
+
+        if creationKind == .message && title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return false
+        }
 
         switch mode {
         case .repeating:
-            return repeatIntervalMinutes >= 1
+            return repeatIntervalMinutes > 0
         case .dateTime:
             return selectedDate > Date()
         }
@@ -79,12 +95,16 @@ struct AddReminderView: View {
         NavigationStack {
             Group {
                 switch step {
-                case .voice:
-                    voiceStep
+                case .chooseKind:
+                    chooseKindStep
+                case .recordVoice:
+                    recordVoiceStep
+                case .messageDetails:
+                    detailsStep(nextTitle: reminderToEdit == nil ? "Next" : nil)
                 case .schedule:
                     scheduleStep
-                case .details:
-                    detailsStep
+                case .finalDetails:
+                    detailsStep(nextTitle: nil)
                 }
             }
             .scrollDismissesKeyboard(.interactively)
@@ -95,15 +115,6 @@ struct AddReminderView: View {
                     Button("Cancel") {
                         recorder.stop()
                         dismiss()
-                    }
-                }
-
-                if step == .details {
-                    ToolbarItem(placement: .confirmationAction) {
-                        Button(isSaving ? "Saving" : "Save") {
-                            saveReminder()
-                        }
-                        .disabled(!canSaveDetails)
                     }
                 }
 
@@ -123,35 +134,71 @@ struct AddReminderView: View {
     }
 
     private var navigationTitle: String {
-        if reminderToEdit != nil { return "Edit Future Call" }
+        if reminderToEdit != nil { return "Edit" }
 
         switch step {
-        case .voice:
-            return "What do you want to say?"
+        case .chooseKind:
+            return "打給未來"
+        case .recordVoice:
+            return "Record Voice"
+        case .messageDetails:
+            return "Title and Note"
         case .schedule:
-            return "When should it call?"
-        case .details:
-            return "Add a title"
+            return "When?"
+        case .finalDetails:
+            return "Add a note"
         }
     }
 
-    private var voiceStep: some View {
+    private var chooseKindStep: some View {
+        List {
+            Section {
+                Button {
+                    creationKind = .voice
+                    step = .recordVoice
+                } label: {
+                    Label("語音", systemImage: "mic.circle.fill")
+                }
+
+                Button {
+                    creationKind = .message
+                    existingAudioFileName = nil
+                    step = .messageDetails
+                } label: {
+                    Label("簡訊", systemImage: "message.circle.fill")
+                }
+            }
+        }
+    }
+
+    private var recordVoiceStep: some View {
         VStack(spacing: 28) {
             Spacer()
 
-            Image(systemName: recorder.isRecording ? "waveform.circle.fill" : "mic.circle.fill")
-                .font(.system(size: 92))
-                .foregroundStyle(recorder.isRecording ? .red : .blue)
+            ZStack {
+                ForEach(0..<3, id: \.self) { index in
+                    Circle()
+                        .stroke(recorder.isRecording ? Color.red.opacity(0.35) : Color.blue.opacity(0.16), lineWidth: 2)
+                        .frame(width: CGFloat(112 + index * 34), height: CGFloat(112 + index * 34))
+                        .scaleEffect(recorder.isRecording ? 1.08 : 0.92)
+                        .animation(
+                            recorder.isRecording
+                                ? .easeInOut(duration: 0.8).repeatForever(autoreverses: true).delay(Double(index) * 0.16)
+                                : .default,
+                            value: recorder.isRecording
+                        )
+                }
 
-            VStack(spacing: 8) {
-                Text(recorder.isRecording ? "Recording..." : "Record a message")
-                    .font(.title2.bold())
-                Text("Skip recording to send it as a message from Past Me.")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
+                Image(systemName: recorder.isRecording ? "waveform.circle.fill" : "mic.circle.fill")
+                    .font(.system(size: 96))
+                    .foregroundStyle(recorder.isRecording ? .red : .blue)
+                    .symbolEffect(.pulse, options: .repeating, value: recorder.isRecording)
             }
-            .padding(.horizontal, 32)
+            .frame(height: 220)
+
+            Text(recorder.isRecording ? "Recording..." : recordedText)
+                .font(.title2.bold())
+                .multilineTextAlignment(.center)
 
             Button {
                 toggleRecording()
@@ -163,94 +210,117 @@ struct AddReminderView: View {
             .tint(recorder.isRecording ? .red : .blue)
             .padding(.horizontal, 32)
 
-            if recorder.recordedFileName != nil {
-                Button("Use this recording") {
-                    step = .schedule
-                }
-                .buttonStyle(.bordered)
-            }
-
-            Button("Send as message") {
+            Button("Save Voice") {
                 recorder.stop()
                 step = .schedule
             }
-            .foregroundStyle(.secondary)
+            .buttonStyle(.bordered)
+            .disabled(audioFileName == nil)
 
             Spacer()
         }
     }
 
+    private var recordedText: String {
+        audioFileName == nil ? "Say something to your future self." : "Voice saved."
+    }
+
     private var scheduleStep: some View {
         Form {
-            Section {
-                Button {
-                    mode = .repeating
-                    step = .details
-                } label: {
-                    Label("Constantly alert", systemImage: "repeat")
+            Section("Reminder") {
+                Picker("Mode", selection: $mode) {
+                    Text("Keep Reminding").tag(ReminderMode.repeating)
+                    Text("Schedule a Time").tag(ReminderMode.dateTime)
                 }
+                .pickerStyle(.segmented)
 
-                Button {
-                    mode = .dateTime
-                    step = .details
-                } label: {
-                    Label("Set a date and time", systemImage: "calendar.badge.clock")
+                scheduleControls
+            }
+
+            Section {
+                if creationKind == .voice {
+                    Button("Next") {
+                        step = .finalDetails
+                    }
+                    .disabled(mode == .dateTime && selectedDate <= Date())
+                } else {
+                    Button(isSaving ? "Saving" : "Save") {
+                        saveReminder()
+                    }
+                    .disabled(!canSave)
                 }
             }
         }
     }
 
-    private var detailsStep: some View {
+    private func detailsStep(nextTitle: String?) -> some View {
         Form {
             Section("Title and note") {
-                TextField(audioFileName == nil ? "Title, e.g. Drink water" : "Title (optional)", text: $title)
+                TextField(creationKind == .voice ? "Title (optional)" : "Title, e.g. Drink water", text: $title)
                     .focused($focusedField, equals: .title)
                     .submitLabel(.done)
+
                 TextField("Note (optional)", text: $notes, axis: .vertical)
                     .focused($focusedField, equals: .notes)
                     .lineLimit(3, reservesSpace: true)
                     .submitLabel(.done)
             }
 
-            Section("Schedule") {
-                Picker("Mode", selection: $mode) {
-                    ForEach(ReminderMode.allCases) { mode in
-                        Text(mode.title).tag(mode)
+            if reminderToEdit != nil {
+                Section("Schedule") {
+                    Picker("Mode", selection: $mode) {
+                        Text("Keep Reminding").tag(ReminderMode.repeating)
+                        Text("Schedule a Time").tag(ReminderMode.dateTime)
                     }
-                }
-                .pickerStyle(.segmented)
+                    .pickerStyle(.segmented)
 
-                if mode == .dateTime {
-                    DatePicker(
-                        "Date and time",
-                        selection: $selectedDate,
-                        in: Date()...,
-                        displayedComponents: [.date, .hourAndMinute]
-                    )
-                } else {
-                    Stepper(value: $hours, in: 0...23) {
-                        HStack {
-                            Text("Every")
-                            Spacer()
-                            Text("\(hours) hr")
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-
-                    Stepper(value: $minutes, in: 0...59) {
-                        HStack {
-                            Text("Minutes")
-                            Spacer()
-                            Text("\(minutes) min")
-                                .foregroundStyle(.secondary)
-                        }
-                    }
+                    scheduleControls
                 }
             }
 
             Section {
-                Label(audioFileName == nil ? "Future Message" : "Future Call", systemImage: audioFileName == nil ? "message" : "waveform")
-                    .foregroundStyle(.secondary)
+                if let nextTitle {
+                    Button(nextTitle) {
+                        step = .schedule
+                    }
+                    .disabled(creationKind == .message && title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                } else {
+                    Button(isSaving ? "Saving" : "Save") {
+                        saveReminder()
+                    }
+                    .disabled(!canSave)
+                }
+            }
+        }
+    }
+
+    private var scheduleControls: some View {
+        Group {
+            if mode == .dateTime {
+                DatePicker(
+                    "Date and time",
+                    selection: $selectedDate,
+                    in: Date()...,
+                    displayedComponents: [.date, .hourAndMinute]
+                )
+            } else {
+                Stepper(value: $hours, in: 0...23) {
+                    HStack {
+                        Text("Every")
+                        Spacer()
+                        Text("\(hours) hr")
+                            .foregroundStyle(.secondary)
+                    }
+                }
+
+                Stepper(value: $minutes, in: 0...59) {
+                    HStack {
+                        Text("Minutes")
+                        Spacer()
+                        Text("\(minutes) min")
+                            .foregroundStyle(.secondary)
+                    }
+                }
             }
         }
     }
@@ -281,7 +351,7 @@ struct AddReminderView: View {
                     reminderToEdit.notes = notes
                     reminderToEdit.mode = mode
                     reminderToEdit.triggerDate = triggerDate
-                    reminderToEdit.audioFileName = audioFileName
+                    reminderToEdit.audioFileName = creationKind == .voice ? audioFileName : nil
                     reminderToEdit.repeatIntervalMinutes = mode == .repeating ? repeatIntervalMinutes : nil
                     try await store.update(reminderToEdit)
                 } else {
@@ -290,7 +360,7 @@ struct AddReminderView: View {
                         notes: notes,
                         triggerDate: triggerDate,
                         mode: mode,
-                        audioFileName: audioFileName,
+                        audioFileName: creationKind == .voice ? audioFileName : nil,
                         repeatIntervalMinutes: mode == .repeating ? repeatIntervalMinutes : nil
                     )
                 }
