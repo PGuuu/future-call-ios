@@ -74,6 +74,10 @@ final class ReminderStore: ObservableObject {
         sortReminders()
     }
 
+    func refreshExpiredReminders() {
+        sortReminders()
+    }
+
     private func sortReminders() {
         reminders.sort {
             if $0.isDone != $1.isDone {
