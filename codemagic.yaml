@@ -36,6 +36,11 @@ workflows:
       - name: Apply Codemagic signing profiles
         script: |
           xcode-project use-profiles
+      - name: Set unique Apple build number
+        script: |
+          APP_BUILD_NUMBER="${BUILD_NUMBER:-$(date +%Y%m%d%H%M)}"
+          echo "Using Apple build number $APP_BUILD_NUMBER"
+          agvtool new-version -all "$APP_BUILD_NUMBER"
       - name: Build IPA
         script: |
           xcode-project build-ipa \
@@ -76,7 +81,4 @@ workflows:
     publishing:
       app_store_connect:
         auth: integration
-        submit_to_testflight: true
-        beta_groups:
-          - Internal Testers
-        expire_build_submitted_for_review: false
+        submit_to_testflight: false
