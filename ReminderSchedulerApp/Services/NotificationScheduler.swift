@@ -1,6 +1,44 @@
 import Foundation
 import UserNotifications
 
+final class NotificationRouter: NSObject, ObservableObject, UNUserNotificationCenterDelegate {
+    static let shared = NotificationRouter()
+
+    @Published var openedReminderID: UUID?
+
+    private override init() {}
+
+    func configure() {
+        UNUserNotificationCenter.current().delegate = self
+    }
+
+    func userNotificationCenter(
+        _ center: UNUserNotificationCenter,
+        willPresent notification: UNNotification
+    ) async -> UNNotificationPresentationOptions {
+        route(notification.request.content.userInfo)
+        return [.banner, .sound, .badge]
+    }
+
+    func userNotificationCenter(
+        _ center: UNUserNotificationCenter,
+        didReceive response: UNNotificationResponse
+    ) async {
+        route(response.notification.request.content.userInfo)
+    }
+
+    private func route(_ userInfo: [AnyHashable: Any]) {
+        guard let rawID = userInfo["reminderID"] as? String,
+              let id = UUID(uuidString: rawID) else {
+            return
+        }
+
+        Task { @MainActor in
+            openedReminderID = id
+        }
+    }
+}
+
 enum ReminderError: LocalizedError {
     case dateInPast
     case notificationPermissionDenied
@@ -43,16 +81,27 @@ final class NotificationScheduler {
         center.removePendingNotificationRequests(withIdentifiers: [reminder.notificationIdentifier])
 
         let content = UNMutableNotificationContent()
-        content.title = "Future Call"
-        content.subtitle = reminder.callerName
-        content.body = reminder.title
+        content.title = reminder.hasVoiceMessage ? "Future Call" : "Future Message"
+        content.subtitle = "Past Me"
+        content.body = reminder.title.isEmpty ? "Past Me has something for you." : reminder.title
         content.sound = .default
+        content.userInfo = ["reminderID": reminder.id.uuidString]
 
-        let components = Calendar.current.dateComponents(
-            [.year, .month, .day, .hour, .minute, .second],
-            from: reminder.triggerDate
-        )
-        let trigger = UNCalendarNotificationTrigger(dateMatching: components, repeats: false)
+        let trigger: UNNotificationTrigger
+        if reminder.mode == .repeating {
+            let minutes = max(reminder.repeatIntervalMinutes ?? 5, 1)
+            trigger = UNTimeIntervalNotificationTrigger(
+                timeInterval: TimeInterval(minutes * 60),
+                repeats: true
+            )
+        } else {
+            let components = Calendar.current.dateComponents(
+                [.year, .month, .day, .hour, .minute, .second],
+                from: reminder.triggerDate
+            )
+            trigger = UNCalendarNotificationTrigger(dateMatching: components, repeats: false)
+        }
+
         let request = UNNotificationRequest(
             identifier: reminder.notificationIdentifier,
             content: content,

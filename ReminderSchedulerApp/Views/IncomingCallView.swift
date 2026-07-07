@@ -21,16 +21,16 @@ struct IncomingCallView: View {
                 Spacer()
 
                 VStack(spacing: 10) {
-                    Text(hasAnswered ? "Connected" : "Incoming Future Call")
+                    Text(incomingLabel)
                         .font(.subheadline)
                         .foregroundStyle(.white.opacity(0.65))
 
-                    Text(reminder.callerName)
+                    Text("Past Me")
                         .font(.system(size: 44, weight: .semibold))
                         .multilineTextAlignment(.center)
                         .foregroundStyle(.white)
 
-                    Text(reminder.title)
+                    Text(displayTitle)
                         .font(.title3)
                         .multilineTextAlignment(.center)
                         .foregroundStyle(.white.opacity(0.76))
@@ -39,16 +39,26 @@ struct IncomingCallView: View {
 
                 if hasAnswered {
                     VStack(spacing: 14) {
-                        Image(systemName: player.isPlaying ? "waveform.circle.fill" : "play.circle.fill")
+                        Image(systemName: reminder.hasVoiceMessage ? (player.isPlaying ? "waveform.circle.fill" : "play.circle.fill") : "text.bubble.fill")
                             .font(.system(size: 82))
                             .foregroundStyle(.white)
 
-                        Button(player.isPlaying ? "Playing" : "Replay message") {
-                            player.play(fileName: reminder.audioFileName)
+                        if let audioFileName = reminder.audioFileName {
+                            Button(player.isPlaying ? "Playing" : "Replay message") {
+                                player.play(fileName: audioFileName)
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .tint(.white)
+                            .foregroundStyle(.black)
                         }
-                        .buttonStyle(.borderedProminent)
-                        .tint(.white)
-                        .foregroundStyle(.black)
+
+                        if !reminder.notes.isEmpty {
+                            Text(reminder.notes)
+                                .font(.body)
+                                .multilineTextAlignment(.center)
+                                .foregroundStyle(.white.opacity(0.72))
+                                .padding(.horizontal, 32)
+                        }
                     }
                 }
 
@@ -69,13 +79,15 @@ struct IncomingCallView: View {
                     .padding(.bottom, 32)
                 } else {
                     HStack(spacing: 54) {
-                        callButton(title: "Decline", icon: "phone.down.fill", color: .red) {
+                        callButton(title: "Later", icon: "phone.down.fill", color: .red) {
                             onDismiss()
                         }
 
-                        callButton(title: "Accept", icon: "phone.fill", color: .green) {
+                        callButton(title: reminder.hasVoiceMessage ? "Accept" : "Read", icon: reminder.hasVoiceMessage ? "phone.fill" : "message.fill", color: .green) {
                             hasAnswered = true
-                            player.play(fileName: reminder.audioFileName)
+                            if let audioFileName = reminder.audioFileName {
+                                player.play(fileName: audioFileName)
+                            }
                         }
                     }
                     .padding(.bottom, 42)
@@ -104,6 +116,20 @@ struct IncomingCallView: View {
         }
         .buttonStyle(.plain)
     }
+
+    private var displayTitle: String {
+        if reminder.title.isEmpty {
+            return reminder.hasVoiceMessage ? "A voice message is waiting" : "Reminder"
+        }
+        return reminder.title
+    }
+
+    private var incomingLabel: String {
+        if hasAnswered {
+            return reminder.hasVoiceMessage ? "Connected" : "Message"
+        }
+        return reminder.hasVoiceMessage ? "Incoming Future Call" : "Message from the past"
+    }
 }
 
 #Preview {
@@ -111,7 +137,6 @@ struct IncomingCallView: View {
         reminder: ReminderItem(
             title: "Remember why you started",
             notes: "",
-            callerName: "Past Me",
             triggerDate: Date(),
             mode: .dateTime,
             audioFileName: "sample.m4a"

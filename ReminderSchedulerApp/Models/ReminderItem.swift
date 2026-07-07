@@ -1,17 +1,17 @@
 import Foundation
 
 enum ReminderMode: String, Codable, CaseIterable, Identifiable {
-    case timer
+    case repeating = "timer"
     case dateTime
 
     var id: String { rawValue }
 
     var title: String {
         switch self {
-        case .timer:
-            return "Timer"
+        case .repeating:
+            return "Constantly"
         case .dateTime:
-            return "Date"
+            return "Once"
         }
     }
 }
@@ -23,7 +23,8 @@ struct ReminderItem: Identifiable, Codable, Equatable {
     var callerName: String
     var triggerDate: Date
     var mode: ReminderMode
-    var audioFileName: String
+    var audioFileName: String?
+    var repeatIntervalMinutes: Int?
     var createdAt: Date
     var isDone: Bool
 
@@ -35,24 +36,30 @@ struct ReminderItem: Identifiable, Codable, Equatable {
         triggerDate <= Date() && !isDone
     }
 
+    var hasVoiceMessage: Bool {
+        audioFileName != nil
+    }
+
     init(
         id: UUID = UUID(),
         title: String,
         notes: String,
-        callerName: String,
+        callerName: String = "Past Me",
         triggerDate: Date,
         mode: ReminderMode,
-        audioFileName: String,
+        audioFileName: String? = nil,
+        repeatIntervalMinutes: Int? = nil,
         createdAt: Date = Date(),
         isDone: Bool = false
     ) {
         self.id = id
         self.title = title
         self.notes = notes
-        self.callerName = callerName
+        self.callerName = "Past Me"
         self.triggerDate = triggerDate
         self.mode = mode
         self.audioFileName = audioFileName
+        self.repeatIntervalMinutes = repeatIntervalMinutes
         self.createdAt = createdAt
         self.isDone = isDone
     }

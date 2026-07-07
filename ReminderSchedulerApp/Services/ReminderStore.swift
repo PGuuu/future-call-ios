@@ -20,21 +20,33 @@ final class ReminderStore: ObservableObject {
         reminders.first { $0.isReadyToCall }
     }
 
+    var futureReminders: [ReminderItem] {
+        reminders.filter { !$0.isDone }
+    }
+
+    var pastReminders: [ReminderItem] {
+        reminders.filter { $0.isDone }
+    }
+
+    func reminder(id: UUID) -> ReminderItem? {
+        reminders.first { $0.id == id }
+    }
+
     func add(
         title: String,
         notes: String,
-        callerName: String,
         triggerDate: Date,
         mode: ReminderMode,
-        audioFileName: String
+        audioFileName: String?,
+        repeatIntervalMinutes: Int?
     ) async throws {
         let reminder = ReminderItem(
             title: title.trimmingCharacters(in: .whitespacesAndNewlines),
             notes: notes.trimmingCharacters(in: .whitespacesAndNewlines),
-            callerName: callerName.trimmingCharacters(in: .whitespacesAndNewlines),
             triggerDate: triggerDate,
             mode: mode,
-            audioFileName: audioFileName
+            audioFileName: audioFileName,
+            repeatIntervalMinutes: repeatIntervalMinutes
         )
 
         try await scheduler.schedule(reminder)
@@ -42,29 +54,42 @@ final class ReminderStore: ObservableObject {
         sortReminders()
     }
 
-    func delete(at offsets: IndexSet) {
-        for index in offsets {
-            let reminder = reminders[index]
-            scheduler.remove(reminder)
-            AudioFileStore.delete(fileName: reminder.audioFileName)
+    func update(_ reminder: ReminderItem) async throws {
+        guard let index = reminders.firstIndex(where: { $0.id == reminder.id }) else { return }
+        var updated = reminder
+        updated.title = updated.title.trimmingCharacters(in: .whitespacesAndNewlines)
+        updated.notes = updated.notes.trimmingCharacters(in: .whitespacesAndNewlines)
+        updated.callerName = "Past Me"
+        updated.isDone = false
+
+        scheduler.remove(reminders[index])
+        try await scheduler.schedule(updated)
+        reminders[index] = updated
+        sortReminders()
+    }
+
+    func delete(_ reminder: ReminderItem) {
+        scheduler.remove(reminder)
+        if let audioFileName = reminder.audioFileName {
+            AudioFileStore.delete(fileName: audioFileName)
         }
-        reminders.remove(atOffsets: offsets)
+        reminders.removeAll { $0.id == reminder.id }
     }
 
     func complete(_ reminder: ReminderItem) {
-        guard let index = reminders.firstIndex(of: reminder) else { return }
+        guard let index = reminders.firstIndex(where: { $0.id == reminder.id }) else { return }
         reminders[index].isDone = true
         scheduler.remove(reminders[index])
         sortReminders()
     }
 
     func toggleDone(_ reminder: ReminderItem) {
-        guard let index = reminders.firstIndex(of: reminder) else { return }
+        guard let index = reminders.firstIndex(where: { $0.id == reminder.id }) else { return }
         reminders[index].isDone.toggle()
 
         if reminders[index].isDone {
             scheduler.remove(reminders[index])
-        } else if reminders[index].triggerDate > Date() {
+        } else if reminders[index].triggerDate > Date() || reminders[index].mode == .repeating {
             let reminderToSchedule = reminders[index]
             Task {
                 try? await scheduler.schedule(reminderToSchedule)
@@ -82,6 +107,9 @@ final class ReminderStore: ObservableObject {
         reminders.sort {
             if $0.isDone != $1.isDone {
                 return !$0.isDone
+            }
+            if $0.isDone {
+                return $0.triggerDate > $1.triggerDate
             }
             return $0.triggerDate < $1.triggerDate
         }

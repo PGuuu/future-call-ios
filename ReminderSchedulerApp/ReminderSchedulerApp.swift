@@ -5,6 +5,10 @@ struct ReminderSchedulerApp: App {
     @StateObject private var store = ReminderStore()
     @Environment(\.scenePhase) private var scenePhase
 
+    init() {
+        NotificationRouter.shared.configure()
+    }
+
     var body: some Scene {
         WindowGroup {
             ContentView()

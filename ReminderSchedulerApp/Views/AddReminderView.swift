@@ -1,45 +1,75 @@
 import SwiftUI
 
 struct AddReminderView: View {
+    enum Step {
+        case voice
+        case schedule
+        case details
+    }
+
     @EnvironmentObject private var store: ReminderStore
     @Environment(\.dismiss) private var dismiss
+    @FocusState private var focusedField: Field?
+
+    let reminderToEdit: ReminderItem?
 
     @StateObject private var recorder = VoiceRecorder()
 
-    @State private var title = ""
-    @State private var notes = ""
-    @State private var callerName = "Past Me"
-    @State private var mode: ReminderMode = .dateTime
-    @State private var selectedDate = Calendar.current.date(byAdding: .minute, value: 10, to: Date()) ?? Date()
-    @State private var hours = 0
-    @State private var minutes = 10
+    @State private var step: Step
+    @State private var title: String
+    @State private var notes: String
+    @State private var mode: ReminderMode
+    @State private var selectedDate: Date
+    @State private var hours: Int
+    @State private var minutes: Int
+    @State private var existingAudioFileName: String?
     @State private var errorMessage = ""
     @State private var isShowingError = false
     @State private var isSaving = false
 
-    private var timerDuration: TimeInterval {
-        TimeInterval((hours * 60 + minutes) * 60)
+    private enum Field {
+        case title
+        case notes
+    }
+
+    init(reminderToEdit: ReminderItem? = nil) {
+        self.reminderToEdit = reminderToEdit
+        _step = State(initialValue: reminderToEdit == nil ? .voice : .details)
+        _title = State(initialValue: reminderToEdit?.title ?? "")
+        _notes = State(initialValue: reminderToEdit?.notes ?? "")
+        _mode = State(initialValue: reminderToEdit?.mode ?? .dateTime)
+        _selectedDate = State(initialValue: reminderToEdit?.triggerDate ?? Calendar.current.date(byAdding: .minute, value: 10, to: Date()) ?? Date())
+        let interval = reminderToEdit?.repeatIntervalMinutes ?? 10
+        _hours = State(initialValue: interval / 60)
+        _minutes = State(initialValue: max(interval % 60, reminderToEdit?.mode == .repeating ? 0 : 10))
+        _existingAudioFileName = State(initialValue: reminderToEdit?.audioFileName)
+    }
+
+    private var repeatIntervalMinutes: Int {
+        max((hours * 60) + minutes, 1)
     }
 
     private var triggerDate: Date {
         switch mode {
-        case .timer:
-            return Date().addingTimeInterval(timerDuration)
+        case .repeating:
+            return Date().addingTimeInterval(TimeInterval(repeatIntervalMinutes * 60))
         case .dateTime:
             return selectedDate
         }
     }
 
-    private var canSave: Bool {
-        let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
-        let trimmedCaller = callerName.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmedTitle.isEmpty, !trimmedCaller.isEmpty, recorder.recordedFileName != nil, !isSaving else {
-            return false
-        }
+    private var audioFileName: String? {
+        recorder.recordedFileName ?? existingAudioFileName
+    }
+
+    private var canSaveDetails: Bool {
+        let hasText = !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        let hasVoice = audioFileName != nil
+        guard (hasText || hasVoice), !isSaving else { return false }
 
         switch mode {
-        case .timer:
-            return timerDuration >= 60
+        case .repeating:
+            return repeatIntervalMinutes >= 1
         case .dateTime:
             return selectedDate > Date()
         }
@@ -47,77 +77,18 @@ struct AddReminderView: View {
 
     var body: some View {
         NavigationStack {
-            Form {
-                Section("Call") {
-                    TextField("Title", text: $title)
-                    TextField("Caller name", text: $callerName)
-                    TextField("Note", text: $notes, axis: .vertical)
-                        .lineLimit(3, reservesSpace: true)
-                }
-
-                Section("Voice capsule") {
-                    Button {
-                        toggleRecording()
-                    } label: {
-                        Label(
-                            recorder.isRecording ? "Stop recording" : "Record message",
-                            systemImage: recorder.isRecording ? "stop.circle.fill" : "mic.circle.fill"
-                        )
-                    }
-                    .foregroundStyle(recorder.isRecording ? .red : .blue)
-
-                    if recorder.recordedFileName != nil {
-                        Label("Voice message saved", systemImage: "checkmark.circle.fill")
-                            .foregroundStyle(.green)
-                    }
-                }
-
-                Section("Schedule") {
-                    Picker("Mode", selection: $mode) {
-                        ForEach(ReminderMode.allCases) { mode in
-                            Text(mode.title).tag(mode)
-                        }
-                    }
-                    .pickerStyle(.segmented)
-
-                    if mode == .dateTime {
-                        DatePicker(
-                            "Date and time",
-                            selection: $selectedDate,
-                            in: Date()...,
-                            displayedComponents: [.date, .hourAndMinute]
-                        )
-                    } else {
-                        Stepper(value: $hours, in: 0...23) {
-                            HStack {
-                                Text("Hours")
-                                Spacer()
-                                Text("\(hours)")
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
-
-                        Stepper(value: $minutes, in: 0...59) {
-                            HStack {
-                                Text("Minutes")
-                                Spacer()
-                                Text("\(minutes)")
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
-                    }
-                }
-
-                Section {
-                    HStack {
-                        Image(systemName: "phone.badge.waveform")
-                            .foregroundStyle(.blue)
-                        Text(triggerDate, format: .dateTime.year().month().day().hour().minute())
-                            .foregroundStyle(.secondary)
-                    }
+            Group {
+                switch step {
+                case .voice:
+                    voiceStep
+                case .schedule:
+                    scheduleStep
+                case .details:
+                    detailsStep
                 }
             }
-            .navigationTitle("New Future Call")
+            .scrollDismissesKeyboard(.interactively)
+            .navigationTitle(navigationTitle)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -127,17 +98,159 @@ struct AddReminderView: View {
                     }
                 }
 
-                ToolbarItem(placement: .confirmationAction) {
-                    Button(isSaving ? "Saving" : "Save") {
-                        saveReminder()
+                if step == .details {
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button(isSaving ? "Saving" : "Save") {
+                            saveReminder()
+                        }
+                        .disabled(!canSaveDetails)
                     }
-                    .disabled(!canSave)
+                }
+
+                ToolbarItemGroup(placement: .keyboard) {
+                    Spacer()
+                    Button("Done") {
+                        focusedField = nil
+                    }
                 }
             }
             .alert("Could not save", isPresented: $isShowingError) {
                 Button("OK", role: .cancel) {}
             } message: {
                 Text(errorMessage)
+            }
+        }
+    }
+
+    private var navigationTitle: String {
+        if reminderToEdit != nil { return "Edit Future Call" }
+
+        switch step {
+        case .voice:
+            return "What do you want to say?"
+        case .schedule:
+            return "When should it call?"
+        case .details:
+            return "Add a title"
+        }
+    }
+
+    private var voiceStep: some View {
+        VStack(spacing: 28) {
+            Spacer()
+
+            Image(systemName: recorder.isRecording ? "waveform.circle.fill" : "mic.circle.fill")
+                .font(.system(size: 92))
+                .foregroundStyle(recorder.isRecording ? .red : .blue)
+
+            VStack(spacing: 8) {
+                Text(recorder.isRecording ? "Recording..." : "Record a message")
+                    .font(.title2.bold())
+                Text("Skip recording to send it as a message from Past Me.")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+            }
+            .padding(.horizontal, 32)
+
+            Button {
+                toggleRecording()
+            } label: {
+                Label(recorder.isRecording ? "Stop Recording" : "Start Recording", systemImage: recorder.isRecording ? "stop.fill" : "mic.fill")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.borderedProminent)
+            .tint(recorder.isRecording ? .red : .blue)
+            .padding(.horizontal, 32)
+
+            if recorder.recordedFileName != nil {
+                Button("Use this recording") {
+                    step = .schedule
+                }
+                .buttonStyle(.bordered)
+            }
+
+            Button("Send as message") {
+                recorder.stop()
+                step = .schedule
+            }
+            .foregroundStyle(.secondary)
+
+            Spacer()
+        }
+    }
+
+    private var scheduleStep: some View {
+        Form {
+            Section {
+                Button {
+                    mode = .repeating
+                    step = .details
+                } label: {
+                    Label("Constantly alert", systemImage: "repeat")
+                }
+
+                Button {
+                    mode = .dateTime
+                    step = .details
+                } label: {
+                    Label("Set a date and time", systemImage: "calendar.badge.clock")
+                }
+            }
+        }
+    }
+
+    private var detailsStep: some View {
+        Form {
+            Section("Title and note") {
+                TextField(audioFileName == nil ? "Title, e.g. Drink water" : "Title (optional)", text: $title)
+                    .focused($focusedField, equals: .title)
+                    .submitLabel(.done)
+                TextField("Note (optional)", text: $notes, axis: .vertical)
+                    .focused($focusedField, equals: .notes)
+                    .lineLimit(3, reservesSpace: true)
+                    .submitLabel(.done)
+            }
+
+            Section("Schedule") {
+                Picker("Mode", selection: $mode) {
+                    ForEach(ReminderMode.allCases) { mode in
+                        Text(mode.title).tag(mode)
+                    }
+                }
+                .pickerStyle(.segmented)
+
+                if mode == .dateTime {
+                    DatePicker(
+                        "Date and time",
+                        selection: $selectedDate,
+                        in: Date()...,
+                        displayedComponents: [.date, .hourAndMinute]
+                    )
+                } else {
+                    Stepper(value: $hours, in: 0...23) {
+                        HStack {
+                            Text("Every")
+                            Spacer()
+                            Text("\(hours) hr")
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+
+                    Stepper(value: $minutes, in: 0...59) {
+                        HStack {
+                            Text("Minutes")
+                            Spacer()
+                            Text("\(minutes) min")
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+            }
+
+            Section {
+                Label(audioFileName == nil ? "Future Message" : "Future Call", systemImage: audioFileName == nil ? "message" : "waveform")
+                    .foregroundStyle(.secondary)
             }
         }
     }
@@ -158,20 +271,29 @@ struct AddReminderView: View {
     }
 
     private func saveReminder() {
-        guard let audioFileName = recorder.recordedFileName else { return }
         recorder.stop()
         isSaving = true
 
         Task {
             do {
-                try await store.add(
-                    title: title,
-                    notes: notes,
-                    callerName: callerName,
-                    triggerDate: triggerDate,
-                    mode: mode,
-                    audioFileName: audioFileName
-                )
+                if var reminderToEdit {
+                    reminderToEdit.title = title
+                    reminderToEdit.notes = notes
+                    reminderToEdit.mode = mode
+                    reminderToEdit.triggerDate = triggerDate
+                    reminderToEdit.audioFileName = audioFileName
+                    reminderToEdit.repeatIntervalMinutes = mode == .repeating ? repeatIntervalMinutes : nil
+                    try await store.update(reminderToEdit)
+                } else {
+                    try await store.add(
+                        title: title,
+                        notes: notes,
+                        triggerDate: triggerDate,
+                        mode: mode,
+                        audioFileName: audioFileName,
+                        repeatIntervalMinutes: mode == .repeating ? repeatIntervalMinutes : nil
+                    )
+                }
                 dismiss()
             } catch {
                 errorMessage = error.localizedDescription
