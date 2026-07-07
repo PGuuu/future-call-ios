@@ -33,6 +33,7 @@ struct ContentView: View {
     @State private var isAddingReminder = false
     @State private var reminderToEdit: ReminderItem?
     @State private var activeReminder: ReminderItem?
+    @State private var notificationPromptReminder: ReminderItem?
 
     var body: some View {
         NavigationStack {
@@ -126,6 +127,18 @@ struct ContentView: View {
                     }
                 )
             }
+            .alert("Past Me", isPresented: notificationPromptBinding) {
+                Button("Later", role: .cancel) {
+                    notificationPromptReminder = nil
+                }
+
+                Button(notificationPromptReminder?.hasVoiceMessage == true ? "Open Call" : "Read Message") {
+                    activeReminder = notificationPromptReminder
+                    notificationPromptReminder = nil
+                }
+            } message: {
+                Text(notificationPromptReminder?.title.isEmpty == false ? notificationPromptReminder?.title ?? "Your reminder is ready." : "Your reminder is ready.")
+            }
             .onReceive(NotificationCenter.default.publisher(for: .futureCallNotificationOpened)) { _ in
                 openReminderFromNotification()
             }
@@ -137,6 +150,17 @@ struct ContentView: View {
         }
     }
 
+    private var notificationPromptBinding: Binding<Bool> {
+        Binding(
+            get: { notificationPromptReminder != nil },
+            set: { isPresented in
+                if !isPresented {
+                    notificationPromptReminder = nil
+                }
+            }
+        )
+    }
+
     private func openReminderFromNotification() {
         guard let id = NotificationRouter.shared.consumePendingReminderID(),
               let reminder = store.reminder(id: id),
@@ -144,8 +168,8 @@ struct ContentView: View {
             return
         }
 
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-            activeReminder = reminder
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+            notificationPromptReminder = reminder
         }
     }
 }

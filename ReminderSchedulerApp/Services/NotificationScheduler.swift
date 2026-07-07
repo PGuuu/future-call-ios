@@ -24,16 +24,19 @@ final class NotificationRouter: NSObject, UNUserNotificationCenterDelegate {
 
     func userNotificationCenter(
         _ center: UNUserNotificationCenter,
-        willPresent notification: UNNotification
-    ) async -> UNNotificationPresentationOptions {
-        return [.banner, .sound, .badge]
+        willPresent notification: UNNotification,
+        withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
+    ) {
+        completionHandler([.banner, .sound, .badge])
     }
 
     func userNotificationCenter(
         _ center: UNUserNotificationCenter,
-        didReceive response: UNNotificationResponse
-    ) async {
+        didReceive response: UNNotificationResponse,
+        withCompletionHandler completionHandler: @escaping () -> Void
+    ) {
         route(response.notification.request.content.userInfo)
+        completionHandler()
     }
 
     private func route(_ userInfo: [AnyHashable: Any]) {
@@ -42,7 +45,7 @@ final class NotificationRouter: NSObject, UNUserNotificationCenterDelegate {
             return
         }
 
-        DispatchQueue.main.async {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
             self.pendingReminderID = id
             NotificationCenter.default.post(name: .futureCallNotificationOpened, object: nil)
         }
