@@ -13,7 +13,7 @@ struct ReminderSchedulerApp: App {
                     await NotificationScheduler.shared.requestAuthorization()
                 }
         }
-        .onChange(of: scenePhase) { _, newPhase in
+        .onChange(of: scenePhase) { newPhase in
             if newPhase == .active {
                 store.refreshExpiredReminders()
             }
