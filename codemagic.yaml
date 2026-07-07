@@ -49,10 +49,14 @@ workflows:
           fi
 
           ARCHIVE_PATH="$(find build/ios/xcarchive -name "*.xcarchive" -print -quit)"
-          APP_PATH="$(find "$ARCHIVE_PATH/Products/Applications" -name "*.app" -print -quit)"
+          if [ -z "$ARCHIVE_PATH" ]; then
+            echo "Unable to find exported IPA or xcarchive."
+            exit 1
+          fi
 
-          if [ -z "$ARCHIVE_PATH" ] || [ -z "$APP_PATH" ]; then
-            echo "Unable to find exported IPA or archived app."
+          APP_PATH="$(find "$ARCHIVE_PATH/Products/Applications" -name "*.app" -print -quit)"
+          if [ -z "$APP_PATH" ]; then
+            echo "Unable to find archived app inside $ARCHIVE_PATH."
             exit 1
           fi
 
