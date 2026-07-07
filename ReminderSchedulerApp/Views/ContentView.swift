@@ -35,104 +35,109 @@ struct ContentView: View {
     @State private var activeReminder: ReminderItem?
 
     var body: some View {
-        NavigationStack {
-            List {
-                Section {
-                    Button {
-                        isAddingReminder = true
-                    } label: {
-                        HomeActionRow(
-                            title: "Call the Future",
-                            subtitle: "Record a voice call or write a message to your future self",
-                            icon: "plus.message.fill",
-                            color: .blue,
-                            count: nil
-                        )
-                    }
+        ZStack {
+            NavigationStack {
+                List {
+                    Section {
+                        Button {
+                            isAddingReminder = true
+                        } label: {
+                            HomeActionRow(
+                                title: "Call the Future",
+                                subtitle: "Record a voice call or write a message to your future self",
+                                icon: "plus.message.fill",
+                                color: .blue,
+                                count: nil
+                            )
+                        }
 
-                    NavigationLink {
-                        ReminderListView(
-                            kind: .missed,
-                            reminders: store.missedReminders,
-                            onSelect: { activeReminder = $0 },
-                            onEdit: { reminderToEdit = $0 },
-                            onDelete: store.delete
-                        )
-                    } label: {
-                        HomeActionRow(
-                            title: "Not Answered",
-                            subtitle: "Calls and messages that are ready but unread",
-                            icon: "phone.badge.waveform.fill",
-                            color: .orange,
-                            count: store.missedReminders.count
-                        )
-                    }
+                        NavigationLink {
+                            ReminderListView(
+                                kind: .missed,
+                                reminders: store.missedReminders,
+                                onSelect: { activeReminder = $0 },
+                                onEdit: { reminderToEdit = $0 },
+                                onDelete: store.delete
+                            )
+                        } label: {
+                            HomeActionRow(
+                                title: "Not Answered",
+                                subtitle: "Calls and messages that are ready but unread",
+                                icon: "phone.badge.waveform.fill",
+                                color: .orange,
+                                count: store.missedReminders.count
+                            )
+                        }
 
-                    NavigationLink {
-                        ReminderListView(
-                            kind: .future,
-                            reminders: store.futureReminders,
-                            onSelect: { reminderToEdit = $0 },
-                            onEdit: { reminderToEdit = $0 },
-                            onDelete: store.delete
-                        )
-                    } label: {
-                        HomeActionRow(
-                            title: "Future Calls",
-                            subtitle: "Scheduled calls, messages, and keep-reminding alerts",
-                            icon: "calendar.badge.clock",
-                            color: .green,
-                            count: store.futureReminders.count
-                        )
-                    }
+                        NavigationLink {
+                            ReminderListView(
+                                kind: .future,
+                                reminders: store.futureReminders,
+                                onSelect: { reminderToEdit = $0 },
+                                onEdit: { reminderToEdit = $0 },
+                                onDelete: store.delete
+                            )
+                        } label: {
+                            HomeActionRow(
+                                title: "Future Calls",
+                                subtitle: "Scheduled calls, messages, and keep-reminding alerts",
+                                icon: "calendar.badge.clock",
+                                color: .green,
+                                count: store.futureReminders.count
+                            )
+                        }
 
-                    NavigationLink {
-                        ReminderListView(
-                            kind: .past,
-                            reminders: store.pastReminders,
-                            onSelect: { _ in },
-                            onEdit: { _ in },
-                            onDelete: store.delete
-                        )
-                    } label: {
-                        HomeActionRow(
-                            title: "Past Calls",
-                            subtitle: "Calls and messages already answered or read",
-                            icon: "clock.arrow.circlepath",
-                            color: .gray,
-                            count: store.pastReminders.count
-                        )
+                        NavigationLink {
+                            ReminderListView(
+                                kind: .past,
+                                reminders: store.pastReminders,
+                                onSelect: { _ in },
+                                onEdit: { _ in },
+                                onDelete: store.delete
+                            )
+                        } label: {
+                            HomeActionRow(
+                                title: "Past Calls",
+                                subtitle: "Calls and messages already answered or read",
+                                icon: "clock.arrow.circlepath",
+                                color: .gray,
+                                count: store.pastReminders.count
+                            )
+                        }
+                    }
+                }
+                .navigationTitle("Future Call")
+                .sheet(isPresented: $isAddingReminder) {
+                    AddReminderView()
+                        .environmentObject(store)
+                }
+                .sheet(item: $reminderToEdit) { reminder in
+                    AddReminderView(reminderToEdit: reminder)
+                        .environmentObject(store)
+                }
+                .onReceive(NotificationCenter.default.publisher(for: .futureCallNotificationOpened)) { _ in
+                    openReminderFromNotification()
+                }
+                .onAppear {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                        openReminderFromNotification()
                     }
                 }
             }
-            .navigationTitle("Future Call")
-            .sheet(isPresented: $isAddingReminder) {
-                AddReminderView()
-                    .environmentObject(store)
-            }
-            .sheet(item: $reminderToEdit) { reminder in
-                AddReminderView(reminderToEdit: reminder)
-                    .environmentObject(store)
-            }
-            .fullScreenCover(item: $activeReminder) { reminder in
+
+            if let activeReminder {
                 IncomingCallView(
-                    reminder: reminder,
+                    reminder: activeReminder,
                     onComplete: {
-                        store.complete(reminder)
+                        store.complete(activeReminder)
                         activeReminder = nil
                     },
                     onDismiss: {
                         activeReminder = nil
                     }
                 )
-            }
-            .onReceive(NotificationCenter.default.publisher(for: .futureCallNotificationOpened)) { _ in
-                openReminderFromNotification()
-            }
-            .onAppear {
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
-                    openReminderFromNotification()
-                }
+                .transition(.opacity)
+                .zIndex(10)
             }
         }
     }
@@ -144,7 +149,7 @@ struct ContentView: View {
             return
         }
 
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
             activeReminder = reminder
         }
     }
