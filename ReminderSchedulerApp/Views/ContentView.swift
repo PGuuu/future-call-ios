@@ -53,7 +53,7 @@ struct ContentView: View {
                 )
             }
             .onAppear(perform: showIncomingCallIfNeeded)
-            .onChange(of: store.reminders) { _, _ in
+            .onChange(of: store.reminders) {
                 showIncomingCallIfNeeded()
             }
         }
