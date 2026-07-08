@@ -33,6 +33,8 @@ struct AddReminderView: View {
     @State private var hours: Int
     @State private var minutes: Int
     @State private var existingAudioFileName: String?
+    @State private var isRandomTime: Bool
+    @State private var isTimeHidden: Bool
     @State private var errorMessage = ""
     @State private var isShowingError = false
     @State private var isSaving = false
@@ -55,19 +57,40 @@ struct AddReminderView: View {
         _hours = State(initialValue: interval / 60)
         _minutes = State(initialValue: max(interval % 60, reminderToEdit?.mode == .repeating ? 0 : 10))
         _existingAudioFileName = State(initialValue: reminderToEdit?.audioFileName)
+        _isRandomTime = State(initialValue: reminderToEdit?.randomTime ?? false)
+        _isTimeHidden = State(initialValue: reminderToEdit?.timeHidden ?? false)
     }
 
     private var repeatIntervalMinutes: Int {
         (hours * 60) + minutes
     }
 
-    private var triggerDate: Date {
+    private func resolvedTriggerDate() -> Date {
         switch mode {
         case .repeating:
             return Date().addingTimeInterval(TimeInterval(max(repeatIntervalMinutes, 1) * 60))
         case .dateTime:
-            return selectedDate
+            guard isRandomTime else { return selectedDate }
+
+            var components = Calendar.current.dateComponents([.year, .month, .day], from: selectedDate)
+            components.hour = Int.random(in: 9...20)
+            components.minute = Int.random(in: 0...59)
+            let candidate = Calendar.current.date(from: components) ?? selectedDate
+
+            if candidate <= Date() {
+                return Date().addingTimeInterval(TimeInterval(Int.random(in: 15...120) * 60))
+            }
+            return candidate
         }
+    }
+
+    private var scheduledDateIsValid: Bool {
+        if isRandomTime {
+            let startOfDay = Calendar.current.startOfDay(for: selectedDate)
+            let endOfDay = Calendar.current.date(byAdding: .day, value: 1, to: startOfDay) ?? selectedDate
+            return endOfDay > Date()
+        }
+        return selectedDate > Date()
     }
 
     private var audioFileName: String? {
@@ -89,7 +112,7 @@ struct AddReminderView: View {
         case .repeating:
             return repeatIntervalMinutes > 0
         case .dateTime:
-            return selectedDate > Date()
+            return scheduledDateIsValid
         }
     }
 
@@ -264,7 +287,7 @@ struct AddReminderView: View {
                     Button("Next") {
                         step = .finalDetails
                     }
-                    .disabled(mode == .dateTime && selectedDate <= Date())
+                    .disabled(mode == .dateTime && !scheduledDateIsValid)
                 } else {
                     Button(isSaving ? "Saving" : "Save") {
                         saveReminder()
@@ -319,12 +342,33 @@ struct AddReminderView: View {
     private var scheduleControls: some View {
         Group {
             if mode == .dateTime {
-                DatePicker(
-                    "Date and time",
-                    selection: $selectedDate,
-                    in: Date()...,
-                    displayedComponents: [.date, .hourAndMinute]
-                )
+                Toggle("Anytime that day", isOn: $isRandomTime)
+
+                if isRandomTime {
+                    DatePicker(
+                        "Date",
+                        selection: $selectedDate,
+                        in: Date()...,
+                        displayedComponents: [.date]
+                    )
+                } else {
+                    DatePicker(
+                        "Date and time",
+                        selection: $selectedDate,
+                        in: Date()...,
+                        displayedComponents: [.date, .hourAndMinute]
+                    )
+                }
+
+                Toggle("Keep the time a secret", isOn: $isTimeHidden)
+
+                if isTimeHidden || isRandomTime {
+                    Text(isTimeHidden
+                        ? "The call will show as \"someday\" until it rings."
+                        : "Past Me will pick a moment on that day.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
             } else {
                 Stepper(value: $hours, in: 0...23) {
                     HStack {
@@ -389,6 +433,15 @@ struct AddReminderView: View {
         case .repeating:
             return "Past Me will keep \(action == "call" ? "calling" : "texting") you every \(intervalText) until you pick up."
         case .dateTime:
+            if isTimeHidden {
+                return "Past Me will \(action) you someday. You won't see it coming."
+            }
+            if isRandomTime {
+                let formatter = DateFormatter()
+                formatter.locale = Locale(identifier: "en_US")
+                formatter.dateFormat = "MMM d"
+                return "Past Me will \(action) you on \(formatter.string(from: selectedDate)), sometime that day."
+            }
             let formatter = RelativeDateTimeFormatter()
             formatter.unitsStyle = .full
             formatter.locale = Locale(identifier: "en_US")
@@ -428,22 +481,28 @@ struct AddReminderView: View {
 
         Task {
             do {
+                let finalTriggerDate = resolvedTriggerDate()
+
                 if var reminderToEdit {
                     reminderToEdit.title = title
                     reminderToEdit.notes = notes
                     reminderToEdit.mode = mode
-                    reminderToEdit.triggerDate = triggerDate
+                    reminderToEdit.triggerDate = finalTriggerDate
                     reminderToEdit.audioFileName = creationKind == .voice ? audioFileName : nil
                     reminderToEdit.repeatIntervalMinutes = mode == .repeating ? repeatIntervalMinutes : nil
+                    reminderToEdit.isRandomTime = mode == .dateTime && isRandomTime
+                    reminderToEdit.isTimeHidden = mode == .dateTime && isTimeHidden
                     try await store.update(reminderToEdit)
                 } else {
                     try await store.add(
                         title: title,
                         notes: notes,
-                        triggerDate: triggerDate,
+                        triggerDate: finalTriggerDate,
                         mode: mode,
                         audioFileName: creationKind == .voice ? audioFileName : nil,
-                        repeatIntervalMinutes: mode == .repeating ? repeatIntervalMinutes : nil
+                        repeatIntervalMinutes: mode == .repeating ? repeatIntervalMinutes : nil,
+                        isRandomTime: mode == .dateTime && isRandomTime,
+                        isTimeHidden: mode == .dateTime && isTimeHidden
                     )
                 }
 

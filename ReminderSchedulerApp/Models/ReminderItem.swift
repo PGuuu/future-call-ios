@@ -27,6 +27,8 @@ struct ReminderItem: Identifiable, Codable, Equatable {
     var repeatIntervalMinutes: Int?
     var createdAt: Date
     var isDone: Bool
+    var isRandomTime: Bool?
+    var isTimeHidden: Bool?
 
     var notificationIdentifier: String {
         "future-call-\(id.uuidString)"
@@ -40,6 +42,14 @@ struct ReminderItem: Identifiable, Codable, Equatable {
         audioFileName != nil
     }
 
+    var randomTime: Bool {
+        isRandomTime ?? false
+    }
+
+    var timeHidden: Bool {
+        isTimeHidden ?? false
+    }
+
     init(
         id: UUID = UUID(),
         title: String,
@@ -50,7 +60,9 @@ struct ReminderItem: Identifiable, Codable, Equatable {
         audioFileName: String? = nil,
         repeatIntervalMinutes: Int? = nil,
         createdAt: Date = Date(),
-        isDone: Bool = false
+        isDone: Bool = false,
+        isRandomTime: Bool? = false,
+        isTimeHidden: Bool? = false
     ) {
         self.id = id
         self.title = title
@@ -62,5 +74,7 @@ struct ReminderItem: Identifiable, Codable, Equatable {
         self.repeatIntervalMinutes = repeatIntervalMinutes
         self.createdAt = createdAt
         self.isDone = isDone
+        self.isRandomTime = isRandomTime
+        self.isTimeHidden = isTimeHidden
     }
 }

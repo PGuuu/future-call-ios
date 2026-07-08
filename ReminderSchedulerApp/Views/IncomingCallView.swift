@@ -8,16 +8,28 @@ struct IncomingCallView: View {
 
     @StateObject private var player = VoicePlayer()
     @StateObject private var ringtone = RingtonePlayer()
-    @State private var hasAnswered = false
+    @State private var hasAnswered: Bool
     @State private var isPulsing = false
     @State private var ringTimer: Timer?
     @State private var callSeconds = 0
     @State private var callTimer: Timer?
 
+    init(
+        reminder: ReminderItem,
+        startAnswered: Bool = false,
+        onComplete: @escaping () -> Void,
+        onDismiss: @escaping () -> Void
+    ) {
+        self.reminder = reminder
+        self.onComplete = onComplete
+        self.onDismiss = onDismiss
+        _hasAnswered = State(initialValue: startAnswered)
+    }
+
     var body: some View {
         ZStack {
             LinearGradient(
-                colors: [Color.black, Color(red: 0.08, green: 0.1, blue: 0.16)],
+                colors: [Color.black, Color(red: 0.14, green: 0.11, blue: 0.08)],
                 startPoint: .top,
                 endPoint: .bottom
             )
@@ -143,10 +155,17 @@ struct IncomingCallView: View {
             }
         }
         .onAppear {
-            withAnimation(.easeOut(duration: 1.6).repeatForever(autoreverses: false)) {
-                isPulsing = true
+            if hasAnswered {
+                startCallTimer()
+                if let audioFileName = reminder.audioFileName {
+                    player.play(fileName: audioFileName)
+                }
+            } else {
+                withAnimation(.easeOut(duration: 1.6).repeatForever(autoreverses: false)) {
+                    isPulsing = true
+                }
+                startRinging()
             }
-            startRinging()
         }
         .onDisappear {
             stopRinging()

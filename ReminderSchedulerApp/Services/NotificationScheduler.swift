@@ -69,7 +69,16 @@ final class NotificationScheduler {
 
     private let center = UNUserNotificationCenter.current()
 
+    private static let followUpCount = 6
+    private static let followUpInterval: TimeInterval = 600
+
     private init() {}
+
+    private static func allIdentifiers(for reminder: ReminderItem) -> [String] {
+        [reminder.notificationIdentifier] + (0..<followUpCount).map {
+            "\(reminder.notificationIdentifier)-followup-\($0)"
+        }
+    }
 
     func requestAuthorization() async {
         do {
@@ -89,7 +98,7 @@ final class NotificationScheduler {
             throw ReminderError.notificationPermissionDenied
         }
 
-        center.removePendingNotificationRequests(withIdentifiers: [reminder.notificationIdentifier])
+        center.removePendingNotificationRequests(withIdentifiers: Self.allIdentifiers(for: reminder))
 
         let content = UNMutableNotificationContent()
         content.title = reminder.hasVoiceMessage ? "Future Call" : "Future Message"
@@ -120,6 +129,35 @@ final class NotificationScheduler {
         )
 
         try await center.add(request)
+
+        if reminder.mode == .dateTime {
+            try await scheduleFollowUps(for: reminder)
+        }
+    }
+
+    private func scheduleFollowUps(for reminder: ReminderItem) async throws {
+        for index in 0..<Self.followUpCount {
+            let fireDate = reminder.triggerDate.addingTimeInterval(Self.followUpInterval * TimeInterval(index + 1))
+            let components = Calendar.current.dateComponents(
+                [.year, .month, .day, .hour, .minute, .second],
+                from: fireDate
+            )
+
+            let content = UNMutableNotificationContent()
+            content.title = "Missed Call"
+            content.subtitle = "Past Me"
+            content.body = "Past Me is still trying to reach you."
+            content.sound = UNNotificationSound(named: UNNotificationSoundName("FutureCallRing.wav"))
+            content.userInfo = ["reminderID": reminder.id.uuidString]
+
+            let request = UNNotificationRequest(
+                identifier: "\(reminder.notificationIdentifier)-followup-\(index)",
+                content: content,
+                trigger: UNCalendarNotificationTrigger(dateMatching: components, repeats: false)
+            )
+
+            try await center.add(request)
+        }
     }
 
     private func authorizationStatus() async -> UNAuthorizationStatus {
@@ -134,7 +172,8 @@ final class NotificationScheduler {
     }
 
     func remove(_ reminder: ReminderItem) {
-        center.removePendingNotificationRequests(withIdentifiers: [reminder.notificationIdentifier])
-        center.removeDeliveredNotifications(withIdentifiers: [reminder.notificationIdentifier])
+        let identifiers = Self.allIdentifiers(for: reminder)
+        center.removePendingNotificationRequests(withIdentifiers: identifiers)
+        center.removeDeliveredNotifications(withIdentifiers: identifiers)
     }
 }

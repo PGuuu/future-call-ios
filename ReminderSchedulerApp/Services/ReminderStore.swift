@@ -34,7 +34,9 @@ final class ReminderStore: ObservableObject {
         triggerDate: Date,
         mode: ReminderMode,
         audioFileName: String?,
-        repeatIntervalMinutes: Int?
+        repeatIntervalMinutes: Int?,
+        isRandomTime: Bool = false,
+        isTimeHidden: Bool = false
     ) async throws {
         let reminder = ReminderItem(
             title: title.trimmingCharacters(in: .whitespacesAndNewlines),
@@ -42,7 +44,9 @@ final class ReminderStore: ObservableObject {
             triggerDate: triggerDate,
             mode: mode,
             audioFileName: audioFileName,
-            repeatIntervalMinutes: repeatIntervalMinutes
+            repeatIntervalMinutes: repeatIntervalMinutes,
+            isRandomTime: isRandomTime,
+            isTimeHidden: isTimeHidden
         )
 
         try await scheduler.schedule(reminder)
