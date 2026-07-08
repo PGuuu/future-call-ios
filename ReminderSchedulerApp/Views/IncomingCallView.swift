@@ -7,9 +7,12 @@ struct IncomingCallView: View {
     let onDismiss: () -> Void
 
     @StateObject private var player = VoicePlayer()
+    @StateObject private var ringtone = RingtonePlayer()
     @State private var hasAnswered = false
     @State private var isPulsing = false
     @State private var ringTimer: Timer?
+    @State private var callSeconds = 0
+    @State private var callTimer: Timer?
 
     var body: some View {
         ZStack {
@@ -63,13 +66,25 @@ struct IncomingCallView: View {
                         .multilineTextAlignment(.center)
                         .foregroundStyle(.white.opacity(0.76))
                         .padding(.horizontal, 32)
+
+                    if hasAnswered {
+                        Text(callDurationText)
+                            .font(.title3.monospacedDigit())
+                            .foregroundStyle(.white.opacity(0.6))
+                            .padding(.top, 2)
+                    }
                 }
 
                 if hasAnswered {
                     VStack(spacing: 14) {
-                        Image(systemName: reminder.hasVoiceMessage ? (player.isPlaying ? "waveform.circle.fill" : "play.circle.fill") : "text.bubble.fill")
-                            .font(.system(size: 82))
-                            .foregroundStyle(.white)
+                        if reminder.hasVoiceMessage {
+                            EqualizerBars(isActive: player.isPlaying)
+                                .frame(height: 72)
+                        } else {
+                            Image(systemName: "text.bubble.fill")
+                                .font(.system(size: 82))
+                                .foregroundStyle(.white)
+                        }
 
                         if let audioFileName = reminder.audioFileName {
                             Button(player.isPlaying ? "Playing" : "Replay message") {
@@ -108,12 +123,13 @@ struct IncomingCallView: View {
                 } else {
                     HStack(spacing: 54) {
                         callButton(title: "Later", icon: "phone.down.fill", color: .red) {
-                            stopRingtoneHaptics()
+                            stopRinging()
                             onDismiss()
                         }
 
                         callButton(title: reminder.hasVoiceMessage ? "Accept" : "Read", icon: reminder.hasVoiceMessage ? "phone.fill" : "message.fill", color: .green) {
-                            stopRingtoneHaptics()
+                            stopRinging()
+                            startCallTimer()
                             withAnimation(.easeOut(duration: 0.3)) {
                                 hasAnswered = true
                             }
@@ -130,24 +146,39 @@ struct IncomingCallView: View {
             withAnimation(.easeOut(duration: 1.6).repeatForever(autoreverses: false)) {
                 isPulsing = true
             }
-            startRingtoneHaptics()
+            startRinging()
         }
         .onDisappear {
-            stopRingtoneHaptics()
+            stopRinging()
+            callTimer?.invalidate()
+            callTimer = nil
         }
     }
 
-    private func startRingtoneHaptics() {
+    private func startRinging() {
         guard !hasAnswered else { return }
+        ringtone.startRinging()
         UIImpactFeedbackGenerator(style: .heavy).impactOccurred()
         ringTimer = Timer.scheduledTimer(withTimeInterval: 1.5, repeats: true) { _ in
             UIImpactFeedbackGenerator(style: .heavy).impactOccurred()
         }
     }
 
-    private func stopRingtoneHaptics() {
+    private func stopRinging() {
+        ringtone.stopRinging()
         ringTimer?.invalidate()
         ringTimer = nil
+    }
+
+    private func startCallTimer() {
+        callSeconds = 0
+        callTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { _ in
+            callSeconds += 1
+        }
+    }
+
+    private var callDurationText: String {
+        String(format: "%02d:%02d", callSeconds / 60, callSeconds % 60)
     }
 
     private func callButton(title: String, icon: String, color: Color, action: @escaping () -> Void) -> some View {
@@ -183,6 +214,27 @@ struct IncomingCallView: View {
             return reminder.hasVoiceMessage ? "Connected" : "Message"
         }
         return reminder.hasVoiceMessage ? "Incoming Future Call" : "Message from the past"
+    }
+}
+
+struct EqualizerBars: View {
+    let isActive: Bool
+
+    var body: some View {
+        HStack(spacing: 7) {
+            ForEach(0..<5, id: \.self) { index in
+                Capsule()
+                    .fill(Color.white)
+                    .frame(width: 7, height: 56)
+                    .scaleEffect(y: isActive ? 1.0 : 0.28, anchor: .center)
+                    .animation(
+                        isActive
+                            ? .easeInOut(duration: 0.45).repeatForever(autoreverses: true).delay(Double(index) * 0.1)
+                            : .easeOut(duration: 0.2),
+                        value: isActive
+                    )
+            }
+        }
     }
 }
 

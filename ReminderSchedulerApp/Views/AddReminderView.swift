@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 struct AddReminderView: View {
     private enum CreationKind {
@@ -12,6 +13,7 @@ struct AddReminderView: View {
         case messageDetails
         case schedule
         case finalDetails
+        case confirmation
     }
 
     @EnvironmentObject private var store: ReminderStore
@@ -105,6 +107,8 @@ struct AddReminderView: View {
                     scheduleStep
                 case .finalDetails:
                     detailsStep(nextTitle: nil)
+                case .confirmation:
+                    confirmationStep
                 }
             }
             .scrollDismissesKeyboard(.interactively)
@@ -112,9 +116,11 @@ struct AddReminderView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") {
-                        recorder.stop()
-                        dismiss()
+                    if step != .confirmation {
+                        Button("Cancel") {
+                            recorder.stop()
+                            dismiss()
+                        }
                     }
                 }
 
@@ -147,6 +153,8 @@ struct AddReminderView: View {
             return "When?"
         case .finalDetails:
             return "Add a note"
+        case .confirmation:
+            return "Scheduled"
         }
     }
 
@@ -189,6 +197,14 @@ struct AddReminderView: View {
                         )
                 }
 
+                if recorder.isRecording {
+                    Circle()
+                        .fill(Color.red.opacity(0.2))
+                        .frame(width: 108, height: 108)
+                        .scaleEffect(1.0 + recorder.level * 0.6)
+                        .animation(.easeOut(duration: 0.12), value: recorder.level)
+                }
+
                 Image(systemName: recorder.isRecording ? "waveform.circle.fill" : "mic.circle.fill")
                     .font(.system(size: 96))
                     .foregroundStyle(recorder.isRecording ? .red : .blue)
@@ -199,6 +215,12 @@ struct AddReminderView: View {
             Text(recorder.isRecording ? "Recording..." : recordedText)
                 .font(.title2.bold())
                 .multilineTextAlignment(.center)
+
+            if recorder.isRecording {
+                Text(String(format: "%02d:%02d", recorder.elapsedSeconds / 60, recorder.elapsedSeconds % 60))
+                    .font(.title3.monospacedDigit())
+                    .foregroundStyle(.secondary)
+            }
 
             Button {
                 toggleRecording()
@@ -325,6 +347,66 @@ struct AddReminderView: View {
         }
     }
 
+    private var confirmationStep: some View {
+        VStack(spacing: 18) {
+            Spacer()
+
+            Image(systemName: creationKind == .voice ? "phone.arrow.up.right.circle.fill" : "paperplane.circle.fill")
+                .font(.system(size: 88))
+                .foregroundStyle(.green)
+
+            Text(creationKind == .voice ? "Call scheduled" : "Message scheduled")
+                .font(.title2.bold())
+
+            Text(confirmationMessage)
+                .font(.body)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 40)
+
+            Spacer()
+
+            Button {
+                dismiss()
+            } label: {
+                Text("Done")
+                    .font(.headline)
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.borderedProminent)
+            .padding(.horizontal, 32)
+            .padding(.bottom, 24)
+        }
+        .onAppear {
+            UINotificationFeedbackGenerator().notificationOccurred(.success)
+        }
+    }
+
+    private var confirmationMessage: String {
+        let action = creationKind == .voice ? "call" : "text"
+
+        switch mode {
+        case .repeating:
+            return "Past Me will keep \(action == "call" ? "calling" : "texting") you every \(intervalText) until you pick up."
+        case .dateTime:
+            let formatter = RelativeDateTimeFormatter()
+            formatter.unitsStyle = .full
+            formatter.locale = Locale(identifier: "en_US")
+            let relative = formatter.localizedString(for: selectedDate, relativeTo: Date())
+            return "Past Me will \(action) you \(relative)."
+        }
+    }
+
+    private var intervalText: String {
+        if hours > 0 && minutes > 0 {
+            return "\(hours) hr \(minutes) min"
+        }
+        if hours > 0 {
+            return "\(hours) hr"
+        }
+        return "\(minutes) min"
+    }
+
     private func toggleRecording() {
         if recorder.isRecording {
             recorder.stop()
@@ -364,7 +446,12 @@ struct AddReminderView: View {
                         repeatIntervalMinutes: mode == .repeating ? repeatIntervalMinutes : nil
                     )
                 }
-                dismiss()
+
+                if reminderToEdit == nil {
+                    step = .confirmation
+                } else {
+                    dismiss()
+                }
             } catch {
                 errorMessage = error.localizedDescription
                 isShowingError = true

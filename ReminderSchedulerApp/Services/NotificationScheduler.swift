@@ -95,7 +95,7 @@ final class NotificationScheduler {
         content.title = reminder.hasVoiceMessage ? "Future Call" : "Future Message"
         content.subtitle = "Past Me"
         content.body = reminder.title.isEmpty ? "Past Me has something for you." : reminder.title
-        content.sound = .default
+        content.sound = UNNotificationSound(named: UNNotificationSoundName("FutureCallRing.wav"))
         content.userInfo = ["reminderID": reminder.id.uuidString]
 
         let trigger: UNNotificationTrigger
