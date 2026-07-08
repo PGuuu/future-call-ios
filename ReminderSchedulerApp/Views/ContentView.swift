@@ -30,6 +30,7 @@ enum ReminderListKind {
 
 struct ContentView: View {
     @EnvironmentObject private var store: ReminderStore
+    @ObservedObject private var router = NotificationRouter.shared
     @State private var isAddingReminder = false
     @State private var reminderToEdit: ReminderItem?
     @State private var activeReminder: ReminderItem?
@@ -55,7 +56,11 @@ struct ContentView: View {
                             ReminderListView(
                                 kind: .missed,
                                 reminders: store.missedReminders,
-                                onSelect: { activeReminder = $0 },
+                                onSelect: { reminder in
+                                    withAnimation(.easeOut(duration: 0.25)) {
+                                        activeReminder = reminder
+                                    }
+                                },
                                 onEdit: { reminderToEdit = $0 },
                                 onDelete: store.delete
                             )
@@ -115,13 +120,11 @@ struct ContentView: View {
                     AddReminderView(reminderToEdit: reminder)
                         .environmentObject(store)
                 }
-                .onReceive(NotificationCenter.default.publisher(for: .futureCallNotificationOpened)) { _ in
-                    openReminderFromNotification()
+                .onChange(of: router.pendingReminderID) {
+                    presentPendingCall()
                 }
                 .onAppear {
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-                        openReminderFromNotification()
-                    }
+                    presentPendingCall()
                 }
             }
 
@@ -130,10 +133,14 @@ struct ContentView: View {
                     reminder: presentedReminder,
                     onComplete: {
                         store.complete(presentedReminder)
-                        activeReminder = nil
+                        withAnimation(.easeIn(duration: 0.2)) {
+                            activeReminder = nil
+                        }
                     },
                     onDismiss: {
-                        activeReminder = nil
+                        withAnimation(.easeIn(duration: 0.2)) {
+                            activeReminder = nil
+                        }
                     }
                 )
                 .transition(.opacity)
@@ -142,14 +149,13 @@ struct ContentView: View {
         }
     }
 
-    private func openReminderFromNotification() {
-        guard let id = NotificationRouter.shared.consumePendingReminderID(),
-              let reminder = store.reminder(id: id),
-              !reminder.isDone else {
-            return
-        }
+    private func presentPendingCall() {
+        guard let id = router.pendingReminderID else { return }
+        router.clearPendingReminderID()
 
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+        guard let reminder = store.reminder(id: id), !reminder.isDone else { return }
+
+        withAnimation(.easeOut(duration: 0.25)) {
             activeReminder = reminder
         }
     }
