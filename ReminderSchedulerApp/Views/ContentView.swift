@@ -50,7 +50,7 @@ struct ContentView: View {
                     }
                     .listRowBackground(Color.clear)
                     .listRowSeparator(.hidden)
-                    .listRowInsets(EdgeInsets(top: 6, leading: 20, trailing: 20, bottom: 6))
+                    .listRowInsets(EdgeInsets(top: 6, leading: 20, bottom: 6, trailing: 20))
                 }
                 .listStyle(.plain)
                 .scrollContentBackground(.hidden)
